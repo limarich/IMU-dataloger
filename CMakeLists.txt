@@ -1,4 +1,3 @@
-
 cmake_minimum_required(VERSION 3.13)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
@@ -17,6 +16,7 @@ add_executable(${PROJECT_NAME}
         lib/imu.c
         hw_config.c
         lib/sd_file.c
+        lib/buzzer.c
         )
 
 target_link_libraries(${PROJECT_NAME} 
@@ -24,6 +24,7 @@ target_link_libraries(${PROJECT_NAME}
         hardware_i2c
          FatFs_SPI
         hardware_clocks
+        hardware_pwm
         )
 
 pico_enable_stdio_usb(${PROJECT_NAME} 1)

@@ -9,15 +9,24 @@
 #include "pico/bootrom.h"
 #include "imu.h"
 #include "lib/sd_file.h"
+#include "lib/buzzer.h"
 
+// LED RGB
 #define LED_RED 13   // pino do led vermelho
 #define LED_BLUE 12  // pino do led azul
 #define LED_GREEN 11 // pino do led verde
 
+// BOTÕES
 #define BUTTON_A 5
 #define BUTTON_B 6
 #define BUTTON_JOYSTICK 22
 
+// BUZZERS
+#define BUZZER_A 10          // PORTA DO BUZZER A
+#define BUZZER_B 21          // PORTA DO BUZZER B
+#define BUZZER_FREQUENCY 200 // FREQUENCIA DO BUZZER
+
+// I2C
 #define I2C_PORT i2c0
 #define I2C_SDA 0
 #define I2C_SCL 1
@@ -28,6 +37,7 @@
 #define DISP_W 128
 #define DISP_H 64
 
+// GRAFICOS
 #define BAR_CENTER_X (DISP_W / 2)
 #define BAR_MAX_WIDTH ((DISP_W / 2) - 10)
 
@@ -79,6 +89,9 @@ void piscar_rgb(bool r, bool g, bool b, int dur_ms);
 int main()
 {
     stdio_init_all();
+
+    // inicializa os buzzers
+    initialization_buzzers(BUZZER_A, BUZZER_B);
 
     // inicializa botões
     // BOTÃO A
@@ -186,6 +199,7 @@ int main()
 
                 if (gravando)
                 {
+                    buzzer_pwm(BUZZER_A, BUZZER_FREQUENCY * 3, 100); // Ativa o Buzzer A por 100ms
                     contador_amostras = 0;
                     sd_append_line("log.csv", "amostra,ax,ay,az,gx,gy,gz,roll,pitch,temp");
                     printf("Gravacao iniciada.\n");
@@ -193,6 +207,10 @@ int main()
                 }
                 else
                 {
+                    buzzer_pwm(BUZZER_A, BUZZER_FREQUENCY * 3, 100); // Ativa o Buzzer A por 100ms
+                    sleep_ms(50);                                    // Aguarda 50ms
+                    buzzer_pwm(BUZZER_A, BUZZER_FREQUENCY * 3, 100); // Ativa o Buzzer A por 100ms
+                    sleep_ms(50);                                    // Aguarda 50ms
                     ssd1306_fill(&ssd, false);
                     printf("Gravacao finalizada.\n");
                     ssd1306_draw_string(&ssd, "Dados Salvos!", 0, 0);
