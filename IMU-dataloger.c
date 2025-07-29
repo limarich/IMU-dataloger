@@ -8,6 +8,9 @@
 #include "font.h"
 #include "pico/bootrom.h"
 #include "imu.h"
+#include "lib/sd_file.h"
+
+#define SIGNAL_GPIO 12
 
 #define BUTTON_A 5
 #define BUTTON_B 6
@@ -33,32 +36,36 @@
 #define DEBOUNCE_TIME 200 // Tempo de debounce em milissegundos
 static int addr = 0x68;
 
-int modo_exibicao = 2; // 0: Roll/Pitch, 1: Gyro, 2: Acel
+int modo_exibicao = 0; // 0: menu_sd, 1: Roll/Pitch, 2: Gyro, 3: Acel
 uint last_a_interrupt = 0;
 uint last_b_interrupt = 0;
 uint last_joystick_interrupt = 0;
+int sd_card_state = 0; // 0: desmontado, 1: montado, 2: gravando
+bool sd_montado = false;
+bool gravando = false;
+int contador_amostras = 0;
+volatile bool flag_toggle_sd = false;
+volatile bool flag_toggle_gravacao = false;
+volatile bool flag_modo_exibicao = false;
 
 void gpio_irq_handler(uint gpio, uint32_t events)
 {
     uint current_time = to_ms_since_boot(get_absolute_time());
+
     if (gpio == BUTTON_A && (current_time - last_a_interrupt > DEBOUNCE_TIME))
     {
         last_a_interrupt = current_time;
-        modo_exibicao = (modo_exibicao + 1) % 3; // Cicla entre 0, 1 e 2
+        flag_toggle_sd = true;
     }
     else if (gpio == BUTTON_B && (current_time - last_b_interrupt > DEBOUNCE_TIME))
     {
         last_b_interrupt = current_time;
-        modo_exibicao = (modo_exibicao - 1 + 3) % 3; // Cicla para trás
+        flag_toggle_gravacao = true;
     }
     else if (gpio == BUTTON_JOYSTICK && (current_time - last_joystick_interrupt > DEBOUNCE_TIME))
     {
         last_joystick_interrupt = current_time;
-        modo_exibicao++;
-        if (modo_exibicao > 2)
-        {
-            modo_exibicao = 0; // Reseta para 0 se passar do limite
-        }
+        flag_modo_exibicao = true;
     }
 }
 
@@ -111,6 +118,11 @@ int main()
 
     bi_decl(bi_2pins_with_func(I2C_SDA, I2C_SCL, GPIO_FUNC_I2C));
 
+    //  LED RGB
+    gpio_init(SIGNAL_GPIO);
+    gpio_set_dir(SIGNAL_GPIO, GPIO_OUT);
+    gpio_put(SIGNAL_GPIO, 0);
+
     imu_data_t imu;
     bool cor = true;
 
@@ -118,6 +130,72 @@ int main()
     char str_pitch[20];
     while (1)
     {
+
+        if (flag_toggle_sd)
+        {
+            flag_toggle_sd = false;
+
+            if (!sd_montado)
+            {
+                if (sd_mount())
+                {
+                    sd_montado = true;
+                    printf("SD montado com sucesso.\n");
+                }
+                else
+                {
+                    printf("Falha ao montar o SD.\n");
+                }
+            }
+            else
+            {
+                if (gravando)
+                {
+                    gravando = false;
+                    gpio_put(SIGNAL_GPIO, 0);
+                    printf("Parando gravacao antes de desmontar...\n");
+                }
+                sd_unmount();
+                sd_montado = false;
+                printf("SD desmontado.\n");
+            }
+        }
+
+        if (flag_toggle_gravacao)
+        {
+            flag_toggle_gravacao = false;
+
+            if (sd_montado)
+            {
+                gravando = !gravando;
+                gpio_put(SIGNAL_GPIO, gravando ? 1 : 0);
+
+                if (gravando)
+                {
+                    contador_amostras = 0;
+                    sd_append_line("log.csv", "amostra,ax,ay,az,gx,gy,gz,roll,pitch,temp");
+                    printf("Gravacao iniciada.\n");
+                }
+                else
+                {
+                    ssd1306_fill(&ssd, false);
+                    printf("Gravacao finalizada.\n");
+                    ssd1306_draw_string(&ssd, "Dados Salvos!", 0, 0);
+                    ssd1306_send_data(&ssd);
+                    sleep_ms(500);
+                }
+            }
+            else
+            {
+                printf("SD nao montado! Use botao A para montar.\n");
+            }
+        }
+
+        if (flag_modo_exibicao)
+        {
+            flag_modo_exibicao = false;
+            modo_exibicao = (modo_exibicao + 1) % 4;
+        }
 
         imu_read(&imu); // Lê os dados do IMU
 
@@ -141,7 +219,51 @@ int main()
 
         switch (modo_exibicao)
         {
-        case 0: // Roll/Pitch
+        case 0: // Menu SD
+
+            ssd1306_draw_string(&ssd, "MENU SD", 5, 0);
+            if (sd_montado)
+            {
+                ssd1306_draw_string(&ssd, "[A] Desmontar", 5, 30);
+            }
+            else
+            {
+                ssd1306_draw_string(&ssd, "[A] Montar", 5, 30);
+            }
+            if (gravando)
+            {
+                ssd1306_draw_string(&ssd, "[B] Parar", 5, 40);
+                char str_count[20];
+                snprintf(str_count, sizeof(str_count), "Amostras: %d", contador_amostras);
+                ssd1306_draw_string(&ssd, str_count, 0, 8);
+            }
+            else
+            {
+                ssd1306_draw_string(&ssd, "[B] Gravar", 5, 40);
+            }
+            if (sd_montado)
+            {
+                if (gravando)
+                {
+                    ssd1306_draw_string(&ssd, "Gravando", 32, 50);
+                }
+                else
+                {
+                    ssd1306_draw_string(&ssd, "Montado", 32, 50);
+                }
+            }
+            else
+            {
+                ssd1306_draw_string(&ssd, "Desmontado", 32, 50);
+            }
+            // if (modo_exibicao == 0)
+            //     ssd1306_draw_string(&ssd, "Roll/Pitch", 60, 50);
+            // else if (modo_exibicao == 1)
+            //     ssd1306_draw_string(&ssd, "Gyro", 60, 50);
+            // else if (modo_exibicao == 2)
+            //     ssd1306_draw_string(&ssd, "Accel", 60, 50);
+            break;
+        case 1: // Roll/Pitch
 
             snprintf(str_roll, sizeof(str_roll), "%5.1f", roll);
             snprintf(str_pitch, sizeof(str_pitch), "%5.1f", pitch);
@@ -151,12 +273,12 @@ int main()
             ssd1306_draw_string(&ssd, str_pitch, 60, 30);
             break;
 
-        case 1: // Giroscopio
+        case 2: // Giroscopio
 
             draw_gyro_graph(&ssd, gx, gy, gz);
             break;
 
-        case 2: // Acelerometro
+        case 3: // Acelerometro
 
             draw_accel_graph(&ssd, ax, ay, az);
             break;
@@ -166,6 +288,24 @@ int main()
 
         printf("Gyro: [%.2f, %.2f, %.2f] | Accel: [%.2f, %.2f, %.2f] | Roll: %.2f | Pitch: %.2f | Temp: %.2f\n",
                gx, gy, gz, ax, ay, az, roll, pitch, imu.temp);
+
+        if (gravando)
+        {
+            char linha[128];
+            snprintf(linha, sizeof(linha),
+                     "%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
+                     contador_amostras++,
+                     ax, ay, az,
+                     gx, gy, gz,
+                     roll, pitch,
+                     imu.temp);
+
+            if (!sd_append_line("log.csv", linha))
+            {
+                printf("Erro ao gravar linha no SD!\n");
+            }
+        }
+
         ssd1306_send_data(&ssd);
         sleep_ms(50);
     }
