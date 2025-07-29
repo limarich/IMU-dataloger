@@ -1,0 +1,17 @@
+# 1. Crie um ambiente virtual chamado "venv"
+python3 -m venv venv
+
+# 2. Ative o ambiente virtual (no terminal Bash/Zsh no macOS ou Linux)
+source venv/bin/activate
+
+# 3. Atualize o pip (boa prática)
+pip install --upgrade pip
+
+# 4. Instale as bibliotecas necessárias
+pip install pandas matplotlib
+
+# 5. Execute o script
+python grafico.py
+
+# 6. (Opcional) Desative o ambiente ao terminar
+deactivate
