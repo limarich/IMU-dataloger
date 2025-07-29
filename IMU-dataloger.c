@@ -201,7 +201,8 @@ int main()
                 {
                     buzzer_pwm(BUZZER_A, BUZZER_FREQUENCY * 3, 100); // Ativa o Buzzer A por 100ms
                     contador_amostras = 0;
-                    sd_append_line("log.csv", "amostra,ax,ay,az,gx,gy,gz,roll,pitch,temp");
+                    sd_append_line("log.csv", "numero_amostra,accel_x,accel_y,accel_z,giro_x,giro_y,giro_z");
+
                     printf("Gravacao iniciada.\n");
                     set_rgb(1, 0, 0); // Vermelho: gravando
                 }
@@ -328,12 +329,10 @@ int main()
         {
             char linha[128];
             snprintf(linha, sizeof(linha),
-                     "%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
+                     "%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
                      contador_amostras++,
                      ax, ay, az,
-                     gx, gy, gz,
-                     roll, pitch,
-                     imu.temp);
+                     gx, gy, gz);
 
             piscar_rgb(0, 0, 1, 50); // Azul piscando: acesso SD
 
