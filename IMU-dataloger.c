@@ -10,7 +10,9 @@
 #include "imu.h"
 #include "lib/sd_file.h"
 
-#define SIGNAL_GPIO 12
+#define LED_RED 13   // pino do led vermelho
+#define LED_BLUE 12  // pino do led azul
+#define LED_GREEN 11 // pino do led verde
 
 #define BUTTON_A 5
 #define BUTTON_B 6
@@ -71,6 +73,9 @@ void gpio_irq_handler(uint gpio, uint32_t events)
 
 void draw_gyro_graph(ssd1306_t *ssd, float gx, float gy, float gz);
 void draw_accel_graph(ssd1306_t *ssd, float ax, float ay, float az);
+void set_rgb(bool r, bool g, bool b);
+void piscar_rgb(bool r, bool g, bool b, int dur_ms);
+
 int main()
 {
     stdio_init_all();
@@ -119,9 +124,17 @@ int main()
     bi_decl(bi_2pins_with_func(I2C_SDA, I2C_SCL, GPIO_FUNC_I2C));
 
     //  LED RGB
-    gpio_init(SIGNAL_GPIO);
-    gpio_set_dir(SIGNAL_GPIO, GPIO_OUT);
-    gpio_put(SIGNAL_GPIO, 0);
+    gpio_init(LED_RED);
+    gpio_set_dir(LED_RED, GPIO_OUT);
+
+    gpio_init(LED_GREEN);
+    gpio_set_dir(LED_GREEN, GPIO_OUT);
+
+    gpio_init(LED_BLUE);
+    gpio_set_dir(LED_BLUE, GPIO_OUT);
+
+    set_rgb(1, 1, 0); // Amarelo: sistema inicializando
+    sleep_ms(1000);
 
     imu_data_t imu;
     bool cor = true;
@@ -141,10 +154,12 @@ int main()
                 {
                     sd_montado = true;
                     printf("SD montado com sucesso.\n");
+                    set_rgb(0, 1, 0); // Verde: pronto
                 }
                 else
                 {
                     printf("Falha ao montar o SD.\n");
+                    piscar_rgb(1, 0, 1, 200); // Roxo piscando
                 }
             }
             else
@@ -152,7 +167,7 @@ int main()
                 if (gravando)
                 {
                     gravando = false;
-                    gpio_put(SIGNAL_GPIO, 0);
+                    set_rgb(1, 0, 0);
                     printf("Parando gravacao antes de desmontar...\n");
                 }
                 sd_unmount();
@@ -168,13 +183,13 @@ int main()
             if (sd_montado)
             {
                 gravando = !gravando;
-                gpio_put(SIGNAL_GPIO, gravando ? 1 : 0);
 
                 if (gravando)
                 {
                     contador_amostras = 0;
                     sd_append_line("log.csv", "amostra,ax,ay,az,gx,gy,gz,roll,pitch,temp");
                     printf("Gravacao iniciada.\n");
+                    set_rgb(1, 0, 0); // Vermelho: gravando
                 }
                 else
                 {
@@ -182,6 +197,7 @@ int main()
                     printf("Gravacao finalizada.\n");
                     ssd1306_draw_string(&ssd, "Dados Salvos!", 0, 0);
                     ssd1306_send_data(&ssd);
+                    set_rgb(0, 1, 0); // Verde: SD montado, pronto
                     sleep_ms(500);
                 }
             }
@@ -255,6 +271,7 @@ int main()
             else
             {
                 ssd1306_draw_string(&ssd, "Desmontado", 32, 50);
+                set_rgb(1, 0, 0); // Verde: SD desmontado
             }
             // if (modo_exibicao == 0)
             //     ssd1306_draw_string(&ssd, "Roll/Pitch", 60, 50);
@@ -300,9 +317,13 @@ int main()
                      roll, pitch,
                      imu.temp);
 
+            piscar_rgb(0, 0, 1, 50); // Azul piscando: acesso SD
+
             if (!sd_append_line("log.csv", linha))
             {
-                printf("Erro ao gravar linha no SD!\n");
+                printf("Erro ao gravar linha no SD! Parando gravacao.\n");
+                gravando = false;
+                set_rgb(1, 0, 1); // Roxo: erro
             }
         }
 
@@ -359,4 +380,19 @@ void draw_accel_graph(ssd1306_t *ssd, float ax, float ay, float az)
     // Barra AZ
     int length_z = (int)(az * scale);
     ssd1306_line(ssd, BAR_CENTER_X, y_az, BAR_CENTER_X + length_z, y_az, true);
+}
+
+void set_rgb(bool r, bool g, bool b)
+{
+    gpio_put(LED_RED, r);
+    gpio_put(LED_GREEN, g);
+    gpio_put(LED_BLUE, b);
+}
+
+void piscar_rgb(bool r, bool g, bool b, int dur_ms)
+{
+    set_rgb(r, g, b);
+    sleep_ms(dur_ms);
+    set_rgb(0, 0, 0);
+    sleep_ms(dur_ms);
 }
